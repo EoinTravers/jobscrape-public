@@ -1,4 +1,5 @@
 import json
+import os
 import sqlite3
 from typing import Literal
 from datetime import datetime
@@ -8,7 +9,8 @@ from bs4 import BeautifulSoup
 from pydantic import BaseModel, Field
 
 from src.llm import OpenAIClient
-
+from src.notion import get_existing_job_ids
+from src.typedefs import ExtractedJobPosting, JobPosting
 """
 Logic for extracting data from job posting pages
 """
@@ -58,32 +60,7 @@ def get_listing_text(html: str) -> str:
     return details.get_text(separator="\n", strip=True)
 
 
-class ExtractedJobPosting(BaseModel):
-    job_title: str
-    company_name: str
-    industry: str | None = field(
-        "Industry for the role, e.g. 'Finance', 'Health', 'Education', etc."
-    )
-    location: str
-    salary: str | None = field("e.g. '£100,000 - £120,000'")
-    contract_type: Literal["permanent", "fixed contract", "UNKNOWN"]
-    office_type: Literal["office", "hybrid", "remote", "UNKNOWN"]
-    # More open-ended stuff
-    company_description: str = field("What does the company do? One sentence.")
-    company_size: str | None
-    job_description: str = field("What does the job entail? One sentence.")
-    skills: str = field(
-        "What skills are required for the job? One sentence, be concise"
-    )
 
-
-class JobPosting(ExtractedJobPosting):
-    # Adds additional properties for export
-    title: str = Field(alias="job_title")
-    job_id: str
-    url: str
-    search_label: str
-    capture_time: str
 
 
 async def extract_listings(
@@ -146,12 +123,22 @@ def get_job_id(url: str) -> str:
     return get_url_params(url, "currentJobId")
 
 
+def get_existing_listings():
+    """Get IDs for listings that are already in the Notion database"""
+
+
 async def run_extraction():
     data = read_from_db("data/jobsearch.db", "pages")
     llm = OpenAIClient(model="gpt-4o-mini")
     if not isinstance(data["metadata"].iloc[-1], dict):
         data["metadata"] = data["metadata"].apply(parse_metadata)
+    # Remove duplicates
+    existing_job_ids = get_existing_job_ids(os.getenv("NOTION_DB_ID"))
+    n = len(data)
     data["job_id"] = data["url"].apply(get_job_id)
+    data = data[~data["job_id"].isin(existing_job_ids)]
+    data = data[~data["job_id"].duplicated()]
+    print(f"Removed {n - len(data)} duplicates -> {len(data)} listings remaining")
     data["search_label"] = data["metadata"].map(lambda x: x["search_label"])
     data, results = await extract_listings(data, llm)
     data.to_csv("data/listings.csv", index=False)

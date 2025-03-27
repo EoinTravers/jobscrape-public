@@ -6,7 +6,7 @@ from typing import Any
 from notion_client import Client as NotionClient
 from notion_client import APIResponseError
 
-from .ai_review import JobExport
+from .typedefs import JobExport
 
 
 # Generic resources
@@ -182,6 +182,37 @@ def add_job_posting_to_notion(
         # print(f"Error adding record to Notion: {e}")
         # return False
 
+
+def get_cell_value(row: dict, field: str) -> str | None:
+    """
+    Get the value of a cell in a Notion row.
+
+    Usage:
+        db_results = client.databases.query(database_id=os.getenv("NOTION_DB_ID"))
+        job_ids = [
+            get_cell_value(p, 'Job ID')
+            for p in db_results['results']
+        ]
+    """
+    cell = row['properties'][field]
+    if cell['type'] == 'rich_text':
+        if contents := cell['rich_text']:
+            return contents[0]['plain_text']
+        else:
+            return None
+    else:
+        raise NotImplementedError(f"Unsupported cell type: {cell['type']}")
+
+def get_existing_job_ids(notion_db_id: str, notion_client: NotionClient | None = None) -> list[str|None]:
+    """Read the 'Job ID' column from the Notion database."""
+    if notion_client is None:
+        notion_client = NotionClient(auth=os.getenv("NOTION_API_KEY"))
+    response = notion_client.databases.query(database_id=notion_db_id)
+    db_results: list[dict] = response['results'] # type: ignore
+    return [
+        get_cell_value(p, 'Job ID')
+        for p in db_results
+    ]
 
 def export_to_notion():
     from .ai_review import job_posting_property_map

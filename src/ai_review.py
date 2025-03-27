@@ -4,7 +4,8 @@ from pydantic import BaseModel, Field
 
 
 import json
-from src.extract import ExtractedJobPosting, JobPosting, listing_to_text
+from src.typedefs import ExtractedJobPosting, JobPosting, JobEvaluation, JobExport
+from src.extract import listing_to_text
 from src.llm import OpenAIClient
 
 
@@ -27,27 +28,6 @@ def load_listings():
     return  listings
 
 
-YNM = Literal["yes", "no", "maybe"]
-
-class JobEvaluation(BaseModel):
-    eval_role_type: YNM = field(
-        "I'm interested in data science roles, e.g. data scientist, AI engineer, etc., but not data engineer, software engineer, data analyst, etc."
-    )
-    eval_seniority: YNM = field("I'm interested in senior roles (or higher).")
-    eval_location: YNM = field(
-        "Is the role either remote or based in Ireland? Say 'no' for roles that require being in London every week"
-    )
-    eval_positive_industry: YNM = field(
-        "I'm particularly interested in roles that have a positive social impact, e.g. mental health, education, climate change, etc. Is this role a match?"
-    )
-    eval_negative_industry: YNM = field(
-        "I'm not interested in industries such as finance, cryptocurrency, marketing, defence etc. Is this role in one of these industries?"
-    )
-    eval_startup: YNM = field(
-        "I prefer startups to large, well-established companies. Is this role with a younger/smaller company?"
-    )
-    eval_salary: YNM = field("Does this role pay more than £80K (or equivalent)?")
-
 
 def evaluate_jobs(jobs: list[JobPosting], llm: OpenAIClient) -> JobEvaluation:
     prompt = """
@@ -62,42 +42,6 @@ def evaluate_jobs(jobs: list[JobPosting], llm: OpenAIClient) -> JobEvaluation:
 
 
 
-# We can't easily combine the pydantic classes for 
-# JobPosting, and JobEvaluation, so let's manually do it.
-
-# We can't easily combine the pydantic classes for 
-# JobPosting, and JobEvaluation, so let's manually do it.
-
-class JobExport(BaseModel):
-    """Combines fields from JobPosting and JobEvaluation"""
-    # From ExtractedJobPosting
-    title: str = Field(alias="job_title", validation_alias="title")
-    company_name: str
-    industry: str | None
-    location: str
-    salary: str | None
-    contract_type: str
-    office_type: str
-    # More open-ended stuff
-    company_description: str
-    company_size: str | None
-    job_description: str
-    skills: str
-    # From JobPosting
-    job_id: str
-    url: str
-    search_label: str
-    capture_time: str
-    # From JobEvaluation
-    eval_role_type: str
-    eval_seniority: str
-    eval_location: str
-    eval_positive_industry: str
-    eval_negative_industry: str
-    eval_startup: str
-    eval_salary: str
-    # new field
-    evaluation_score: int
 
 
 
