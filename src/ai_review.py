@@ -1,7 +1,8 @@
 import asyncio
 from typing import Literal
 from pydantic import BaseModel, Field
-
+import os
+from datetime import datetime
 
 import json
 from src.typedefs import ExtractedJobPosting, JobPosting, JobEvaluation, JobExport
@@ -142,6 +143,9 @@ async def run_ai_review():
     llm = OpenAIClient(model="gpt-4o-mini", reqs_per_minute=240)
     evaluations = await evaluate_jobs(listings, llm)
     export_data = combine_jobs_and_evaluations(listings, evaluations)
+    if os.path.exists("data/export_data.json"):
+        today = datetime.now().strftime("%Y-%m-%d")
+        os.rename("data/export_data.json", f"data/export_data_{today}.json")
     with open("data/export_data.json", "w") as f:
         json.dump([job.model_dump() for job in export_data], f, indent=2)
     return export_data

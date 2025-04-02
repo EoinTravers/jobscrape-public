@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from src.llm import OpenAIClient
 from src.notion import get_existing_job_ids
 from src.typedefs import ExtractedJobPosting, JobPosting
+
 """
 Logic for extracting data from job posting pages
 """
@@ -58,9 +59,6 @@ def get_listing_text(html: str) -> str:
         for x in instances:
             x.decompose()
     return details.get_text(separator="\n", strip=True)
-
-
-
 
 
 async def extract_listings(
@@ -127,13 +125,18 @@ def get_existing_listings():
     """Get IDs for listings that are already in the Notion database"""
 
 
-async def run_extraction():
-    data = read_from_db("data/jobsearch.db", "pages")
+async def run_extraction(
+    db_path: str = "data/jobsearch.db", output_path: str = "data/listings"
+):
+    data = read_from_db(db_path, "pages")
     llm = OpenAIClient(model="gpt-4o-mini")
     if not isinstance(data["metadata"].iloc[-1], dict):
         data["metadata"] = data["metadata"].apply(parse_metadata)
     # Remove duplicates
-    existing_job_ids = get_existing_job_ids(os.getenv("NOTION_DB_ID"))
+    notion_db_id = os.getenv("NOTION_DB_ID")
+    if not notion_db_id:
+        raise ValueError("NOTION_DB_ID environment variable must be set")
+    existing_job_ids = get_existing_job_ids(notion_db_id)
     n = len(data)
     data["job_id"] = data["url"].apply(get_job_id)
     data = data[~data["job_id"].isin(existing_job_ids)]
@@ -141,11 +144,17 @@ async def run_extraction():
     print(f"Removed {n - len(data)} duplicates -> {len(data)} listings remaining")
     data["search_label"] = data["metadata"].map(lambda x: x["search_label"])
     data, results = await extract_listings(data, llm)
-    data.to_csv("data/listings.csv", index=False)
-    with open("data/listings.json", "w") as f:
+    # Save
+    today = datetime.now().strftime("%Y-%m-%d")
+    for ext in [".csv", ".json"]:
+        if os.path.exists(output_path + ext):
+            os.rename(output_path + ext, f"{output_path}_{today}{ext}")
+    data.to_csv(output_path + ".csv", index=False)
+    with open(output_path + ".json", "w") as f:
         json.dump([r.model_dump() for r in results], f, indent=2)
 
 
 if __name__ == "__main__":
     import asyncio
+
     asyncio.run(run_extraction())
